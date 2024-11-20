@@ -1,0 +1,32 @@
+Code2
+import pandas as pd
+import gseapy as gp
+from google.colab import files
+import io
+
+# Define gene sets based on communities identified in disease samples
+gene_sets = {
+    "Community_0": ["ENSG00000118922", "ENSG00000102317", "ENSG00000129103", "ENSG00000128285", "ENSG00000127074", ...],
+    "Community_1": ["ENSG00000135048", "ENSG00000008438", "ENSG00000007516", "ENSG00000067066", "ENSG00000064201", ...],
+    "Community_2": ["ENSG00000118137", "ENSG00000115041", "ENSG00000115084", "ENSG00000111775", "ENSG00000125885", ...]
+}
+
+# Upload and read healthy sample data
+print("Please upload the healthy sample data file (e.g., 'PKD normal CVS5.csv').")
+uploaded = files.upload()
+file_name = list(uploaded.keys())[0]
+data_healthy = pd.read_csv(io.BytesIO(uploaded[file_name]), delimiter=",")
+data_healthy.set_index("Gene_ID", inplace=True)
+
+# Set column names as sample names (assuming each column represents a different sample)
+data_healthy.columns = ['Sample_1', 'Sample_2', 'Sample_3', 'Sample_4']
+
+# Perform ssGSEA analysis on healthy samples using disease communities
+ssgsea_result_healthy = gp.ssgsea(data=data_healthy, gene_sets=gene_sets, outdir=None, min_size=5, max_size=500, permutation_num=0)
+
+# Extract results for healthy samples
+ssgsea_scores_healthy = ssgsea_result_healthy.res2d
+print("ssGSEA Results for Healthy Samples:\n", ssgsea_scores_healthy)
+
+# To compare healthy and disease samples, calculate the mean and standard deviation of each community across samples
+# Statistical comparisons can be performed on these values
