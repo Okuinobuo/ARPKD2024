@@ -1,0 +1,81 @@
+Code1
+import pandas as pd
+import numpy as np
+import networkx as nx
+import matplotlib.pyplot as plt
+from google.colab import files
+import io
+from community import community_louvain  # Louvain method for community detection
+import matplotlib.cm as cm
+
+# 1. Upload the file
+uploaded = files.upload()
+
+# Automatically get the name of the uploaded file
+file_name = list(uploaded.keys())[0]
+
+# 2. Load the data
+data = pd.read_csv(io.StringIO(uploaded[file_name].decode('utf-8')), delimiter=",", index_col=0)
+
+# 3. Extract only numerical data (confirming genes are rows, samples are columns)
+numeric_data = data.select_dtypes(include=['float', 'int'])
+
+# 4. Select a subset of genes
+sample_size = 100  # Adjust here if more genes are available
+if numeric_data.shape[0] > sample_size:
+    subset_data = numeric_data.sample(n=sample_size, random_state=1)
+else:
+    subset_data = numeric_data
+
+# 5. Calculate the correlation matrix for gene pairs
+gene_correlation = subset_data.T.corr()
+
+# 6. Extract only pairs with a correlation of 0.6 or higher to create edges
+threshold = 0.6
+edges = [(gene1, gene2) for gene1 in gene_correlation.index 
+         for gene2 in gene_correlation.columns 
+         if gene1 != gene2 and gene_correlation.loc[gene1, gene2] >= threshold]
+
+# 7. Create a NetworkX graph
+G = nx.Graph()
+G.add_nodes_from(gene_correlation.index)  # Nodes represent gene names
+G.add_edges_from(edges)  # Edges represent pairs with correlations above the threshold
+
+# 8. Extract only the largest connected component
+largest_component = max(nx.connected_components(G), key=len)
+G_subgraph = G.subgraph(largest_component)
+
+# 9. Apply Louvain community detection
+partition = community_louvain.best_partition(G_subgraph)
+
+# 10. Draw the graph with communities colored differently
+plt.figure(figsize=(12, 12))
+pos = nx.spring_layout(G_subgraph, seed=42, k=0.15)  # Adjust k to increase node spacing
+
+# Set colors based on community
+cmap = cm.get_cmap('viridis', max(partition.values()) + 1)
+for node, community in partition.items():
+    nx.draw_networkx_nodes(G_subgraph, pos, [node], node_size=50, node_color=[cmap(community)], alpha=0.8)
+
+nx.draw_networkx_edges(G_subgraph, pos, alpha=0.3)
+nx.draw_networkx_labels(G_subgraph, pos, font_size=8, font_color="black")
+plt.title("Gene Correlation Network with Louvain Community Detection")
+plt.show()
+
+# Calculate centrality for each community
+central_genes = []
+for community_id in set(partition.values()):
+    # Create a subgraph for each community
+    community_nodes = [node for node, comm in partition.items() if comm == community_id]
+    subgraph = G_subgraph.subgraph(community_nodes)
+    
+    # Calculate centrality (using betweenness centrality)
+    centrality = nx.betweenness_centrality(subgraph)
+    
+    # Find the node with the highest centrality
+    central_gene = max(centrality, key=centrality.get)
+    central_genes.append((community_id, central_gene, centrality[central_gene]))
+
+# Display the central genes as a DataFrame
+central_genes_df = pd.DataFrame(central_genes, columns=['Community', 'Central Gene', 'Betweenness Centrality'])
+print(central_genes_df)
