@@ -1,0 +1,98 @@
+import pandas as pd
+import numpy as np
+import networkx as nx
+import matplotlib.pyplot as plt
+from google.colab import files
+import io
+from community import community_louvain
+
+# 1. Upload the file
+uploaded = files.upload()
+
+# Get the uploaded file name
+file_name = list(uploaded.keys())[0]
+
+# 2. Load the data
+data = pd.read_csv(io.StringIO(uploaded[file_name].decode('utf-8')), delimiter=",", index_col=0)
+
+# 3. Extract only numerical data
+numeric_data = data.select_dtypes(include=['float', 'int'])
+
+# 4. Select a subset of genes
+sample_size = 100
+if numeric_data.shape[0] > sample_size:
+    subset_data = numeric_data.sample(n=sample_size, random_state=1)
+else:
+    subset_data = numeric_data
+
+# 5. Compute the correlation matrix between genes
+gene_correlation = subset_data.T.corr()
+
+# 6. List of correlation thresholds (0.1 to 0.9)
+thresholds = np.arange(0.1, 1.0, 0.1)
+
+# 7. Initialize lists to store metrics
+metrics = {
+    "Threshold": [],
+    "Number of Nodes": [],
+    "Number of Edges": [],
+    "Average Degree": [],
+    "Graph Density": [],
+    "Average Clustering Coefficient": [],
+    "Number of Communities": []
+}
+
+# 8. Network analysis for each threshold
+for threshold in thresholds:
+    gene_correlation_np = gene_correlation.to_numpy()
+    row_idx, col_idx = np.where((gene_correlation_np >= threshold) & (gene_correlation_np < 1))
+    edges = [(gene_correlation.index[i], gene_correlation.columns[j]) for i, j in zip(row_idx, col_idx)]
+
+    G = nx.Graph()
+    G.add_nodes_from(gene_correlation.index)
+    G.add_edges_from(edges)
+
+    if len(G.nodes) > 0:
+        partition = community_louvain.best_partition(G)
+
+        num_nodes = len(G.nodes)
+        num_edges = len(G.edges)
+        avg_degree = (2 * num_edges / num_nodes) if num_nodes > 0 else 0
+        density = nx.density(G)
+        avg_clustering = nx.average_clustering(G)
+        num_communities = len(set(partition.values()))
+
+        metrics["Threshold"].append(threshold)
+        metrics["Number of Nodes"].append(num_nodes)
+        metrics["Number of Edges"].append(num_edges)
+        metrics["Average Degree"].append(avg_degree)
+        metrics["Graph Density"].append(density)
+        metrics["Average Clustering Coefficient"].append(avg_clustering)
+        metrics["Number of Communities"].append(num_communities)
+
+# 9. Convert results to a DataFrame
+metrics_df = pd.DataFrame(metrics)
+
+# 10. Visualize the results
+fig, axes = plt.subplots(3, 2, figsize=(14, 12))
+
+metric_names = [
+    "Number of Nodes", "Number of Edges", "Average Degree",
+    "Graph Density", "Average Clustering Coefficient",
+    "Number of Communities"
+]
+
+for i, metric in enumerate(metric_names):
+    ax = axes[i//2, i%2]
+    ax.plot(metrics_df["Threshold"], metrics_df[metric], marker="o", linestyle="-")
+    ax.set_xlabel("Threshold")
+    ax.set_ylabel(metric)
+    ax.set_title(metric)
+    ax.grid(True)
+
+plt.tight_layout()
+plt.show()
+
+# 11. Save the data as CSV and download it
+metrics_df.to_csv("network_metrics.csv", index=False)
+files.download("network_metrics.csv")
